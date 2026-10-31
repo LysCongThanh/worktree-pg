@@ -16,15 +16,14 @@ import (
 	"github.com/LysCongThanh/worktree-pg/internal/errs"
 )
 
-// pollInterval is how often a contended lock is retried.
-const pollInterval = 25 * time.Millisecond
-
 // Lock is a held flock on an open file.
 type Lock struct{ f *os.File }
 
 // Acquire takes an exclusive (or shared) flock on path, creating it with mode
-// 0600 if needed. It retries until timeout and then fails with Busy/LOCK_TIMEOUT
-// (exit 6). Context cancellation aborts the wait.
+// 0600 if needed. A contended lock is waited for with a blocking flock (the kernel
+// wakes waiters on release, so many contenders do not starve each other the way
+// sleep-and-retry polling does). After timeout it fails with Busy/LOCK_TIMEOUT
+// (exit 6); context cancellation aborts the wait.
 func Acquire(ctx context.Context, path string, exclusive bool, timeout time.Duration) (*Lock, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "create lock dir")
@@ -37,28 +36,55 @@ func Acquire(ctx context.Context, path string, exclusive bool, timeout time.Dura
 	if exclusive {
 		how = syscall.LOCK_EX
 	}
-	deadline := time.Now().Add(timeout)
-	for {
-		err := syscall.Flock(int(f.Fd()), how|syscall.LOCK_NB)
-		if err == nil {
-			return &Lock{f: f}, nil
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR) {
+	fd := int(f.Fd())
+	err = flock(fd, how|syscall.LOCK_NB)
+	if err == nil {
+		return &Lock{f: f}, nil
+	}
+	if !errors.Is(err, syscall.EWOULDBLOCK) {
+		f.Close()
+		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "flock %s", path)
+	}
+	done := make(chan error, 1)
+	go func() { done <- flock(fd, how) }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		if err != nil {
 			f.Close()
 			return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "flock %s", path)
 		}
-		if time.Now().After(deadline) {
-			f.Close()
-			return nil, errs.New(errs.Busy, errs.CodeLockTimeout, "timed out after %s waiting for lock %s", timeout, path).
-				WithHint("another worktree-pg process is running; retry shortly")
-		}
-		select {
-		case <-ctx.Done():
-			f.Close()
-			return nil, ctx.Err()
-		case <-time.After(pollInterval):
+		return &Lock{f: f}, nil
+	case <-timer.C:
+		abandon(f, fd, done)
+		return nil, errs.New(errs.Busy, errs.CodeLockTimeout, "timed out after %s waiting for lock %s", timeout, path).
+			WithHint("another worktree-pg process is running; retry shortly")
+	case <-ctx.Done():
+		abandon(f, fd, done)
+		return nil, ctx.Err()
+	}
+}
+
+// flock retries flock(2) on EINTR (the Go runtime preempts with signals).
+func flock(fd, how int) error {
+	for {
+		err := syscall.Flock(fd, how)
+		if !errors.Is(err, syscall.EINTR) {
+			return err
 		}
 	}
+}
+
+// abandon lets a waiter that gave up finish in the background: when its blocking
+// flock eventually succeeds the lock is released at once, then the file closed.
+func abandon(f *os.File, fd int, done <-chan error) {
+	go func() {
+		if err := <-done; err == nil {
+			_ = syscall.Flock(fd, syscall.LOCK_UN)
+		}
+		f.Close()
+	}()
 }
 
 // Release unlocks and closes the file. Safe to call on nil and more than once.

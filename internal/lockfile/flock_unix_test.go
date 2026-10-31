@@ -83,3 +83,42 @@ func TestSharedLocksCoexistAndCancel(t *testing.T) {
 		t.Fatalf("lock perm %o", st.Mode().Perm())
 	}
 }
+
+// A waiter that timed out must not keep the lock once its background flock wins,
+// and a fresh waiter must get the lock promptly after release (blocking wait).
+func TestAbandonedWaiterReleasesAndWaitersWakePromptly(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "state.lock")
+	holder, err := Acquire(context.Background(), p, true, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Acquire(context.Background(), p, true, 50*time.Millisecond); errs.CodeOf(err) != errs.CodeLockTimeout {
+		t.Fatalf("want LOCK_TIMEOUT, got %v", err)
+	}
+	got := make(chan time.Time, 1)
+	go func() {
+		l, err := Acquire(context.Background(), p, true, 5*time.Second)
+		if err != nil {
+			t.Error(err)
+			got <- time.Time{}
+			return
+		}
+		got <- time.Now()
+		_ = l.Release()
+	}()
+	time.Sleep(100 * time.Millisecond)
+	released := time.Now()
+	_ = holder.Release()
+	at := <-got
+	if at.IsZero() {
+		t.Fatal("waiter never got the lock: abandoned waiter kept it")
+	}
+	if d := at.Sub(released); d > time.Second {
+		t.Fatalf("waiter woke %s after release", d)
+	}
+	l, err := Acquire(context.Background(), p, true, time.Second)
+	if err != nil {
+		t.Fatalf("lock leaked: %v", err)
+	}
+	_ = l.Release()
+}

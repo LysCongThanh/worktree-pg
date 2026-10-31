@@ -19,6 +19,7 @@ import (
 func TestMain(m *testing.M) {
 	if dir := os.Getenv("WTPG_REG_HELPER"); dir != "" {
 		s, _ := Open(dir)
+		s.LockTimeout = time.Minute // this test checks lost updates, not timeouts (slow fsync under load)
 		for i := 0; i < 25; i++ {
 			if err := s.Update(context.Background(), incr); err != nil {
 				os.Exit(3)
@@ -46,6 +47,7 @@ func TestInvariant_S10_RegistryConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.LockTimeout = time.Minute // 275 fsynced updates can exceed 10 s on a loaded disk
 	var procs []*exec.Cmd
 	for i := 0; i < 3; i++ { // subprocess writers (flock across processes)
 		c := exec.Command(os.Args[0], "-test.run=^$")
