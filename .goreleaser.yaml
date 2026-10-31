@@ -1,0 +1,52 @@
+# GoReleaser v2: static binaries + sha256 checksums attached to a GitHub release.
+#   goreleaser release --snapshot --clean   # local dry run, writes ./dist
+version: 2
+project_name: worktree-pg
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: worktree-pg
+    main: .
+    binary: worktree-pg
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/LysCongThanh/worktree-pg/internal/cli.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/*.md
+      - examples/wt-pg
+      - examples/*/.worktree-pg.toml
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^ci:"
+      - "Merge pull request"
+
+release:
+  draft: true
+  prerelease: auto

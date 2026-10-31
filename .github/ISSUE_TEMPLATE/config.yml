@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/LysCongThanh/worktree-pg/discussions
+    about: Ask and answer questions in Discussions (Q&A).
+  - name: Security vulnerability
+    url: https://github.com/LysCongThanh/worktree-pg/security/advisories/new
+    about: Please report security issues privately.

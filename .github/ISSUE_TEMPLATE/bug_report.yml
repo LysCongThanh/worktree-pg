@@ -1,0 +1,70 @@
+name: Bug report
+description: Something did not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Please check the [safety notes](https://github.com/LysCongThanh/worktree-pg/blob/main/docs/safety.md) and existing issues first.
+        **Remove passwords and DSNs** from anything you paste. `doctor --json` does not print them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, and what happened instead.
+      placeholder: |
+        I ran `worktree-pg up` in a new worktree and ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence of commands that shows the problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `worktree-pg doctor --json`
+      description: Run it in the affected worktree. It checks git, config, privileges and hooks without changing anything.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of the failing command with `--json -v`
+      description: Includes the error code, exit code and hint. Attach the log file named in the error if a migrate/seed command failed (check it for secrets first).
+      render: json
+  - type: textarea
+    id: config
+    attributes:
+      label: .worktree-pg.toml
+      render: toml
+  - type: input
+    id: version
+    attributes:
+      label: worktree-pg version
+      placeholder: worktree-pg version
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, PostgreSQL version and where it runs
+      placeholder: Ubuntu 24.04, PostgreSQL 17 in docker (external), admin is NOSUPERUSER CREATEDB CREATEROLE
+    validations:
+      required: true
+  - type: dropdown
+    id: entry
+    attributes:
+      label: How was it invoked?
+      options:
+        - CLI
+        - git post-checkout hook
+        - Claude Code hook
+        - worktrunk / wt-pg shim / other script
+    validations:
+      required: true
