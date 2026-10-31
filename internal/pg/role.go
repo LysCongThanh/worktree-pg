@@ -51,16 +51,42 @@ func (a *Admin) MarkedRoles(ctx context.Context) ([]RoleInfo, error) {
 // query). A crash can therefore never leave an unmarked role behind, which every
 // later run would refuse as foreign (S1) and gc could never collect (S4). A
 // parallel creator blocks on the name until this commits, so it sees the marker.
-// The statement text holds the password, so errors never echo it (pgconn errors
-// carry no SQL).
+// The password is sent only as its SCRAM verifier (S6, see ScramVerifier).
 func (a *Admin) CreateMarkedRole(ctx context.Context, name, password, marker string) error {
-	return a.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s; COMMENT ON ROLE %s IS %s",
-		Ident(name), Literal(password), Ident(name), Literal(marker)))
+	sql, err := createRoleSQL(name, password, marker)
+	if err != nil {
+		return err
+	}
+	return a.Exec(ctx, sql)
 }
 
-// SetPassword re-applies the (deterministic) password of an existing role.
+// SetPassword re-applies the (deterministic) password of an existing role, sent
+// as its SCRAM verifier (same bytes every run, S6/S11).
 func (a *Admin) SetPassword(ctx context.Context, name, password string) error {
-	return a.Exec(ctx, fmt.Sprintf("ALTER ROLE %s PASSWORD %s", Ident(name), Literal(password)))
+	sql, err := setPasswordSQL(name, password)
+	if err != nil {
+		return err
+	}
+	return a.Exec(ctx, sql)
+}
+
+// createRoleSQL renders CreateMarkedRole's statement; it never holds the plaintext.
+func createRoleSQL(name, password, marker string) (string, error) {
+	v, err := ScramVerifier(name, password)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s; COMMENT ON ROLE %s IS %s",
+		Ident(name), Literal(v), Ident(name), Literal(marker)), nil
+}
+
+// setPasswordSQL renders SetPassword's statement; it never holds the plaintext.
+func setPasswordSQL(name, password string) (string, error) {
+	v, err := ScramVerifier(name, password)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("ALTER ROLE %s PASSWORD %s", Ident(name), Literal(v)), nil
 }
 
 // GrantToSelf makes the admin a member of role so it can create databases owned
