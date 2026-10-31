@@ -87,8 +87,9 @@ func cmdVersion(a *app, _ context.Context, args []string) int {
 	if code, stop := a.parse(fs, "version", args); stop {
 		return code
 	}
-	res := map[string]string{"version": Version}
-	return a.finish("version", res, nil, nil, func(w io.Writer) { fmt.Fprintln(w, "worktree-pg", Version) })
+	v := currentVersion()
+	res := map[string]string{"version": v}
+	return a.finish("version", res, nil, nil, func(w io.Writer) { fmt.Fprintln(w, "worktree-pg", v) })
 }
 
 // cmdHelp prints the usage text on stdout.
