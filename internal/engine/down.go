@@ -21,7 +21,7 @@ import (
 func (e *Engine) Down(ctx context.Context, req DownRequest) (*DownResult, error) {
 	start := e.Opts.Now()
 	key := e.resolveKey(ctx, req)
-	w, c, err := e.beginDown(ctx, key)
+	w, c, prev, err := e.beginDown(ctx, key)
 	res := &DownResult{EnvFiles: []envfile.Result{}, Actions: []string{}, Orphans: []string{}}
 	if err != nil || w == nil {
 		return res, err
@@ -32,11 +32,11 @@ func (e *Engine) Down(ctx context.Context, req DownRequest) (*DownResult, error)
 	var main *gitx.Repo
 	if req.RemoveWorktree {
 		if main, err = checkRemovable(ctx, w.Path); err != nil {
-			return res, e.abortDown(ctx, w, err)
+			return res, e.abortDown(ctx, w, prev, err)
 		}
 	}
 	if err := e.destroy(ctx, cfg, w, c, res); err != nil && !errs.Is(err, backend.CodeOrphan) {
-		return res, e.abortDown(ctx, w, err)
+		return res, e.abortDown(ctx, w, prev, err)
 	} else if err != nil {
 		res.Orphans = append(res.Orphans, w.Role)
 	}
@@ -128,11 +128,11 @@ func (e *Engine) resolveKey(ctx context.Context, req DownRequest) string {
 	return key
 }
 
-// beginDown takes the lease and marks the entry tearing_down; nil when unregistered.
-func (e *Engine) beginDown(ctx context.Context, key string) (*registry.Worktree, *registry.Cluster, error) {
-	var w *registry.Worktree
-	var c registry.Cluster
-	err := e.Store.Update(ctx, func(st *registry.State) error {
+// beginDown takes the lease and marks the entry tearing_down; nil when
+// unregistered. prev is the status before, restored by abortDown.
+func (e *Engine) beginDown(ctx context.Context, key string) (w *registry.Worktree, c *registry.Cluster, prev string, err error) {
+	c = &registry.Cluster{}
+	err = e.Store.Update(ctx, func(st *registry.State) error {
 		cur := st.Worktrees[key]
 		if key == "" || cur == nil {
 			return nil
@@ -140,23 +140,29 @@ func (e *Engine) beginDown(ctx context.Context, key string) (*registry.Worktree,
 		if _, err := cur.Acquire("down", e.Opts.Now()); err != nil {
 			return err
 		}
-		cur.Status = registry.StatusTearingDown
+		prev, cur.Status = cur.Status, registry.StatusTearingDown
 		cp := *cur
 		w = &cp
 		if rc := st.Clusters[cur.Cluster]; rc != nil {
-			c = *rc
+			*c = *rc
 		} else {
-			c = registry.Cluster{ID: cur.Cluster}
+			*c = registry.Cluster{ID: cur.Cluster}
 		}
 		return nil
 	})
-	return w, &c, err
+	return w, c, prev, err
 }
 
-// abortDown releases the lease after a refused or failed teardown.
-func (e *Engine) abortDown(ctx context.Context, w *registry.Worktree, cause error) error {
+// abortDown releases the lease after a refused or failed teardown. A worktree
+// that was ready stays ready: its database may hold the developer's data, and a
+// non-ready status would let a later killed `up` look like a crashed first
+// provisioning whose rollback (next up, gc) drops that database (S4 vs data loss).
+func (e *Engine) abortDown(ctx context.Context, w *registry.Worktree, prev string, cause error) error {
 	_ = e.updateWorktree(context.WithoutCancel(ctx), w.Key, func(_ *registry.State, cur *registry.Worktree) {
 		cur.Status, cur.LastError = registry.StatusFailed, errs.As(cause).Error()
+		if prev == registry.StatusReady {
+			cur.Status = registry.StatusReady
+		}
 		cur.Release()
 	})
 	return cause
