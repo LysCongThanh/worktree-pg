@@ -23,11 +23,14 @@ const (
 )
 
 // GitHookBlock is the shell snippet that calls worktree-pg from post-checkout.
-// It never fails the checkout, even when worktree-pg is not installed.
+// It never fails the checkout, even when worktree-pg is not installed (it then
+// prints a one-line notice for new worktrees only).
 func GitHookBlock() string {
 	return GitBlockBegin + "\n" +
 		"# Provisions a database for new worktrees (git worktree add); never fails the checkout.\n" +
-		`if command -v worktree-pg >/dev/null 2>&1; then worktree-pg git-hook post-checkout "$@" || true; fi` + "\n" +
+		`if command -v worktree-pg >/dev/null 2>&1; then worktree-pg git-hook post-checkout "$@" || true` + "\n" +
+		// Not on PATH: say so, but only for a brand-new checkout (null old ref, branch flag 1).
+		`else case "$3:$1" in 1:*[!0]*) ;; 1:*) echo "worktree-pg: not on PATH; new worktree not provisioned" >&2 ;; esac; fi` + "\n" +
 		GitBlockEnd + "\n"
 }
 
