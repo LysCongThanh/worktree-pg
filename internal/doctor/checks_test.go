@@ -42,6 +42,7 @@ func noEnv(string) string { return "" }
 func TestDoctorWithoutAdminDSN(t *testing.T) {
 	root := newRepo(t, cfgExternal)
 	state := t.TempDir()
+	_ = os.Chmod(state, 0o700) // CI umask 022 makes TempDir 0755, which doctor rightly warns about
 	_ = os.WriteFile(filepath.Join(state, "secret.key"), []byte("00"), 0o644)
 	_ = os.Chmod(filepath.Join(state, "secret.key"), 0o644) // independent of umask
 	rep := Run(context.Background(), Options{Cwd: root, StateDir: state, Home: t.TempDir(), Getenv: noEnv})
