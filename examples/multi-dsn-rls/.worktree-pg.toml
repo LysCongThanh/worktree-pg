@@ -1,0 +1,56 @@
+# Multi-tenant app using row-level security with cluster-wide roles.
+# cluster_setup_cmd creates the roles once per cluster (re-run when roles.sql changes);
+# three DSNs connect to the same per-worktree database as different roles.
+version = 1
+name = "tenancy"
+
+[cluster]
+source = "external"
+admin_dsn_env = "WORKTREE_PG_ADMIN_DSN"
+
+[database]
+roles = "per_worktree"
+strategy = "file_copy" # large seed: FILE_COPY clones faster above ~500 MB (docs/spikes.md S2)
+
+[template]
+inputs = ["db/migrations", "db/seed"]
+migrate_cmd = "psql -v ON_ERROR_STOP=1 -f db/migrate.sql"
+seed_cmd = "psql -v ON_ERROR_STOP=1 -f db/seed/seed.sql"
+cluster_setup_cmd = "psql -v ON_ERROR_STOP=1 -f db/roles.sql"
+cluster_setup_inputs = ["db/roles.sql"]
+post_clone_cmd = "psql -v ON_ERROR_STOP=1 -c 'ANALYZE'"
+
+[[dsn]]
+var = "DATABASE_URL"
+role = "@owner"
+params = "sslmode=disable"
+
+[[dsn]]
+var = "APP_DATABASE_URL"
+role = "tenancy_app"
+password_env = "TENANCY_APP_PASSWORD"
+params = "sslmode=disable&application_name=api"
+
+[[dsn]]
+var = "READONLY_DSN"
+role = "tenancy_readonly"
+password_env = "TENANCY_READONLY_PASSWORD"
+format = "kv"
+
+[ports]
+ranges = ["5600-5999"]
+
+[ports.vars]
+API_PORT = ""
+WORKER_PORT = ""
+WEB_PORT = "3100-3199"
+
+[env]
+files = [".env"]
+on_duplicate = "error"
+
+[env.vars]
+WEB_ORIGIN = 'http://127.0.0.1:{{Port "WEB_PORT"}}'
+
+[hooks.claude]
+on_up_failure = "fail"

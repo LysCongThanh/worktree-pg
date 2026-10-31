@@ -1,0 +1,39 @@
+# Go service migrated with goose, Postgres you already run (external cluster).
+#   export WORKTREE_PG_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:5432/postgres
+#   worktree-pg up
+version = 1
+name = "shop"
+
+[cluster]
+source = "external"
+admin_dsn_env = "WORKTREE_PG_ADMIN_DSN"
+
+[database]
+roles = "per_worktree"
+
+[template]
+inputs = ["db/migrations"]
+migrate_cmd = "goose -dir db/migrations up"
+seed_cmd = "psql -v ON_ERROR_STOP=1 -f db/seed.sql"
+extensions = ["pgcrypto"]
+
+[[dsn]]
+var = "DATABASE_URL"
+role = "@owner"
+format = "url"
+params = "sslmode=disable"
+
+[ports]
+ranges = ["5600-5999"]
+reserved = [5432]
+
+[ports.vars]
+PORT = ""
+
+[env]
+files = [".env"]
+
+[env.vars]
+GOOSE_DRIVER = "postgres"
+GOOSE_DBSTRING = '{{DSN "DATABASE_URL"}}'
+APP_URL = 'http://127.0.0.1:{{Port "PORT"}}'

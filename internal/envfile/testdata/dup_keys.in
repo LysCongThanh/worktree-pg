@@ -1,0 +1,4 @@
+PORT=3000
+export DATABASE_URL=postgres://dev
+# PORT=1 commented
+OTHER=1

@@ -1,0 +1,6 @@
+APP_NAME=shop
+# >>> worktree-pg managed block (do not edit) >>>
+PORT=1
+STALE=yes
+# <<< worktree-pg managed block <<<
+AFTER=1

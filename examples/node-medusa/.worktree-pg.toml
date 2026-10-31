@@ -1,0 +1,40 @@
+# Node monorepo (Medusa-like backend) with a tool-managed docker Postgres.
+# worktree-pg starts one labeled container per image and clones one DB per worktree.
+version = 1
+name = "store"
+
+[cluster]
+source = "docker"
+image = "postgres:17-alpine"
+
+[database]
+roles = "per_worktree"
+host = "localhost" # the stack builds URLs with "localhost"
+
+[template]
+inputs = ["apps/backend/src/migrations", "apps/backend/package.json"]
+prepare_cmd = "npm ci --prefix apps/backend"
+migrate_cmd = "npx --prefix apps/backend medusa db:migrate"
+seed_cmd = "npm run --prefix apps/backend seed"
+timeout = "15m"
+
+[[dsn]]
+var = "DATABASE_URL"
+role = "@owner"
+params = "sslmode=disable"
+
+[ports]
+ranges = ["6000-6499"]
+reserved = [9000, 5173, 7001]
+
+[ports.vars]
+PORT = ""
+ADMIN_PORT = "6500-6599"
+
+[env]
+files = ["apps/backend/.env", "apps/storefront/.env.local"]
+
+[env.vars]
+COMPOSE_PROJECT_NAME = "{{.App}}_{{.Slug}}"
+MEDUSA_BACKEND_URL = 'http://localhost:{{Port "PORT"}}'
+ADMIN_CORS = 'http://localhost:{{Port "ADMIN_PORT"}}'

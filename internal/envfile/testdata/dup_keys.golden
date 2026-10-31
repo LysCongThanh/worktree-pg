@@ -1,0 +1,13 @@
+PORT=3000
+export DATABASE_URL=postgres://dev
+# PORT=1 commented
+OTHER=1
+# >>> worktree-pg managed block (do not edit) >>>
+DATABASE_URL='postgres://shop_wt_a:p4ss@127.0.0.1:5601/shop_wt_a?sslmode=disable'
+PORT=5602
+GREETING='hello world $HOME'
+TRICKY="it's \"q\" \$X \`y\` \\z"
+MULTI="a\nb"
+EMPTY=
+# <<< worktree-pg managed block <<<
+# dup: DATABASE_URL,PORT
