@@ -86,8 +86,20 @@ func DockerBound(ctx context.Context) (PortSet, error) {
 		return PortSet{}, nil
 	}
 	out, err := exec.CommandContext(ctx, "docker", append([]string{"inspect"}, list...)...).Output()
-	if err != nil {
-		return PortSet{}, err
+	return boundFromInspect(out, err)
+}
+
+// boundFromInspect keeps what `docker inspect` printed even when it exited
+// non-zero: a container removed between `ps` and `inspect` fails the whole command
+// while the JSON for every other container is still complete (S8: one vanished
+// container must not hide the reserved ports of all the stopped ones).
+func boundFromInspect(out []byte, runErr error) (PortSet, error) {
+	set, perr := ParseDockerBindings(out)
+	if perr != nil {
+		if runErr != nil {
+			return PortSet{}, runErr
+		}
+		return PortSet{}, perr
 	}
-	return ParseDockerBindings(out)
+	return set, runErr
 }
