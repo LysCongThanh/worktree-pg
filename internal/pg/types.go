@@ -45,6 +45,7 @@ type Admin struct {
 	Port int
 
 	conn *pgx.Conn
+	cfg  *pgx.ConnConfig // kept to open sibling connections to other databases (M2, additive)
 }
 
 // Conn exposes the underlying connection to sibling packages' tests and M2 code.

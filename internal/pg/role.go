@@ -1,0 +1,82 @@
+package pg
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/LysCongThanh/worktree-pg/internal/names"
+)
+
+// RoleInfo is the catalog view of one role.
+type RoleInfo struct {
+	Name      string
+	Comment   string // shobj_description: holds the worktree-pg marker
+	Superuser bool
+}
+
+const roleCols = `r.rolname::text, coalesce(shobj_description(r.oid, 'pg_authid'), ''), r.rolsuper`
+
+// Role returns the role named name, or nil when it does not exist.
+func (a *Admin) Role(ctx context.Context, name string) (*RoleInfo, error) {
+	var r RoleInfo
+	err := a.conn.QueryRow(ctx, "select "+roleCols+" from pg_roles r where r.rolname = $1", name).
+		Scan(&r.Name, &r.Comment, &r.Superuser)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, Wrap(err, "look up role %s", name)
+	}
+	return &r, nil
+}
+
+// MarkedRoles lists every role carrying a worktree-pg marker.
+func (a *Admin) MarkedRoles(ctx context.Context) ([]RoleInfo, error) {
+	rows, err := a.conn.Query(ctx, "select "+roleCols+` from pg_roles r
+		where shobj_description(r.oid, 'pg_authid') like $1 order by r.rolname`, names.MarkerPrefix+"%")
+	if err != nil {
+		return nil, Wrap(err, "list marked roles")
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (RoleInfo, error) {
+		var r RoleInfo
+		return r, row.Scan(&r.Name, &r.Comment, &r.Superuser)
+	})
+}
+
+// CreateRole creates a LOGIN role with the given password. The statement text
+// holds the password, so errors never echo it (pgconn errors carry no SQL).
+func (a *Admin) CreateRole(ctx context.Context, name, password string) error {
+	return a.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", Ident(name), Literal(password)))
+}
+
+// SetPassword re-applies the (deterministic) password of an existing role.
+func (a *Admin) SetPassword(ctx context.Context, name, password string) error {
+	return a.Exec(ctx, fmt.Sprintf("ALTER ROLE %s PASSWORD %s", Ident(name), Literal(password)))
+}
+
+// CommentRole writes the marker as the role COMMENT.
+func (a *Admin) CommentRole(ctx context.Context, name, text string) error {
+	return a.Exec(ctx, fmt.Sprintf("COMMENT ON ROLE %s IS %s", Ident(name), Literal(text)))
+}
+
+// GrantToSelf makes the admin a member of role so it can create databases owned
+// by it and REASSIGN its objects. PG16+ non-superusers need WITH INHERIT TRUE,
+// SET TRUE (spike D2); superusers need nothing.
+func (a *Admin) GrantToSelf(ctx context.Context, role string) error {
+	if a.Info.Superuser {
+		return nil
+	}
+	sql := "GRANT " + Ident(role) + " TO CURRENT_USER"
+	if a.Info.NeedsSetGrant() {
+		sql += " WITH INHERIT TRUE, SET TRUE"
+	}
+	return a.Exec(ctx, sql)
+}
+
+// DropRole runs DROP ROLE IF EXISTS. 2BP01 (dependent objects) is returned as is.
+func (a *Admin) DropRole(ctx context.Context, name string) error {
+	return a.Exec(ctx, "DROP ROLE IF EXISTS "+Ident(name))
+}
