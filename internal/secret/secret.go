@@ -27,7 +27,7 @@ const keyLen = 32
 // Secret holds the loaded key. It is never serialised.
 type Secret struct{ key []byte }
 
-// LoadOrCreate reads <dir>/secret.key, creating it atomically (O_EXCL) on first
+// LoadOrCreate reads <dir>/secret.key, creating it atomically (temp file + link) on first
 // use. A key file readable by group/other is refused (SECRET_KEY_UNSAFE, exit 4).
 func LoadOrCreate(dir string) (*Secret, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -41,23 +41,31 @@ func LoadOrCreate(dir string) (*Secret, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "generate secret key")
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, fs.ErrExist) { // lost a creation race: use the winner's key
-		return load(path)
-	}
+	// Publish atomically: write a private temp file, then hard-link it into place.
+	// os.Link fails if the key already exists, so a concurrent loser never sees a
+	// half-written file (it reads the winner's complete key instead).
+	tmp, err := os.CreateTemp(dir, FileName+".tmp-*")
 	if err != nil {
-		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "create %s", path)
+		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "create temp key in %s", dir)
 	}
-	_, werr := f.Write([]byte(hex.EncodeToString(key)))
+	defer os.Remove(tmp.Name())
+	werr := tmp.Chmod(0o600)
 	if werr == nil {
-		werr = f.Sync()
+		_, werr = tmp.Write([]byte(hex.EncodeToString(key)))
 	}
-	if cerr := f.Close(); werr == nil {
+	if werr == nil {
+		werr = tmp.Sync()
+	}
+	if cerr := tmp.Close(); werr == nil {
 		werr = cerr
 	}
 	if werr != nil {
-		_ = os.Remove(path)
-		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, werr, "write %s", path)
+		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, werr, "write %s", tmp.Name())
+	}
+	if err := os.Link(tmp.Name(), path); errors.Is(err, fs.ErrExist) { // lost a creation race: use the winner's key
+		return load(path)
+	} else if err != nil {
+		return nil, errs.Wrap(errs.Internal, errs.CodeInternal, err, "publish %s", path)
 	}
 	return &Secret{key: key}, nil
 }
