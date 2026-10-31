@@ -1,0 +1,41 @@
+#!/bin/sh
+# wt-pg: tiny shim so worktree managers (worktrunk, custom scripts, ...) can call
+# worktree-pg from their post-create / pre-remove hooks.
+#
+#   wt-pg up   [path]   provision the worktree at path (default: $PWD); idempotent
+#   wt-pg down [path]   tear down its database, role and env block
+#
+# Wire it into your tool's hooks, passing the new/removed worktree path. Check
+# your tool's docs for the hook names and the variable that holds the path, e.g.
+# a post-create hook running:   wt-pg up "<worktree path>"
+#
+# Exit status is worktree-pg's (see docs/agents.md). Set WT_PG_SOFT=1 to always
+# exit 0 so a provisioning problem never blocks worktree creation.
+set -eu
+
+usage() {
+	echo "usage: wt-pg up|down [path]" >&2
+	exit 3
+}
+
+[ $# -ge 1 ] || usage
+action=$1
+path=${2:-$PWD}
+case $action in
+up | down) ;;
+*) usage ;;
+esac
+
+if ! command -v worktree-pg >/dev/null 2>&1; then
+	echo "wt-pg: worktree-pg not found on PATH" >&2
+	[ "${WT_PG_SOFT:-}" = 1 ] && exit 0
+	exit 4
+fi
+
+status=0
+worktree-pg "$action" --path "$path" || status=$?
+if [ "$status" -ne 0 ] && [ "${WT_PG_SOFT:-}" = 1 ]; then
+	echo "wt-pg: worktree-pg $action exited $status (ignored, WT_PG_SOFT=1)" >&2
+	exit 0
+fi
+exit "$status"
