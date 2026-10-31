@@ -1,0 +1,13 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": false,
+  "command": "up",
+  "warnings": [],
+  "error": {
+    "code": "MIGRATE_FAILED",
+    "exit": 5,
+    "message": "migrate_cmd failed with exit code 1",
+    "hint": "see the log for the command output",
+    "log": "/state/logs/k-1-migrate_cmd.log"
+  }
+}

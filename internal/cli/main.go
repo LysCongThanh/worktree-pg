@@ -1,14 +1,15 @@
 // Package cli implements the worktree-pg command line (stdlib flag, one FlagSet
-// per command). Milestone M3 fills in the commands; this file provides the entry
-// point, `version` and the usage text so the binary builds from day one.
+// per command). It only talks to internal/engine (plus hooks and doctor), so the
+// CLI, the hooks and the future MCP server share one behaviour.
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/LysCongThanh/worktree-pg/internal/errs"
+	"os/signal"
+	"syscall"
 )
 
 // Version is set at build time: -ldflags "-X github.com/LysCongThanh/worktree-pg/internal/cli.Version=v0.1.0".
@@ -16,43 +17,82 @@ var Version = "dev"
 
 const usage = `worktree-pg: one migrated Postgres template, one database + dev ports per git worktree.
 
-Usage: worktree-pg <command> [flags]
+Usage: worktree-pg [global flags] <command> [flags]
 
 Commands:
-  up        provision this worktree (idempotent)
-  down      tear down this worktree's database, role and env block
-  status    show provisioned worktrees
-  env       print this worktree's variables
-  run       run a command with this worktree's variables
-  gc        reconcile with 'git worktree list' (dry run unless --yes)
-  template  status | refresh | gc
-  doctor    check prerequisites
-  hook      install | uninstall claude|git
-  version   print the version
+  up        [--wait D] [--reassign-ports] [--dry-run]   provision this worktree (idempotent)
+  down      [--keep-env] [--remove-worktree]            tear down database, role and env block
+  status    [--all]                                     show provisioned worktrees
+  env       [--format dotenv|shell|json] [--override]   print this worktree's variables
+  run       [--override] -- cmd [args...]               run a command with those variables
+  gc        [--yes]                                     reconcile with 'git worktree list' (dry run unless --yes)
+  template  status | refresh [--force] | gc [--yes]     manage template databases
+  doctor                                                check prerequisites
+  hook      install|uninstall claude [--scope local|project|user] [--print]
+  hook      install|uninstall git [--print]
+  version                                               print the version
+
+Global flags (before or after the command):
+  --json  --path DIR  --config FILE  -q  -v
+
+Exit codes: 0 ok, 1 internal, 2 safety refusal, 3 config/usage, 4 prerequisite,
+5 user command failed, 6 busy, 7 not provisioned, 130 interrupted.
 `
 
-// Main runs the CLI and returns the process exit code.
-func Main(args []string) int { return run(args, os.Stdout, os.Stderr) }
+// command runs one subcommand with its own arguments and returns the exit code.
+type command func(a *app, ctx context.Context, args []string) int
 
-// run is Main with injectable streams for tests.
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(stderr, usage)
-		if len(args) == 0 {
-			return 3
-		}
-		return 0
+// commands is filled in init to avoid an initialisation cycle with cmdHelp.
+var commands map[string]command
+
+func init() {
+	commands = map[string]command{
+		"up": cmdUp, "down": cmdDown, "status": cmdStatus, "env": cmdEnv, "run": cmdRun,
+		"gc": cmdGC, "template": cmdTemplate, "doctor": cmdDoctor, "hook": cmdHook,
+		"version": cmdVersion, "help": cmdHelp,
+		"claude-hook": cmdClaudeHook, "git-hook": cmdGitHook, // internal, called by hooks
 	}
-	switch args[0] {
-	case "version", "--version":
-		fmt.Fprintln(stdout, "worktree-pg", Version)
-		return 0
-	case "up", "down", "status", "env", "run", "gc", "template", "doctor", "hook", "claude-hook", "git-hook":
-		err := errs.New(errs.NotImplemented, errs.CodeNotImplemented, "%s is not implemented yet", args[0])
-		fmt.Fprintln(stderr, "worktree-pg:", err)
-		return errs.ExitCode(err)
-	default:
-		fmt.Fprintf(stderr, "worktree-pg: unknown command %q\n\n%s", args[0], usage)
-		return 3
+}
+
+// Main runs the CLI and returns the process exit code. SIGINT/SIGTERM cancel the
+// context; commands report that as exit 130.
+func Main(args []string) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return newApp(os.Stdin, os.Stdout, os.Stderr).run(ctx, args)
+}
+
+// run parses global flags, then dispatches to the command.
+func (a *app) run(ctx context.Context, args []string) int {
+	fs := a.flagSet("worktree-pg", "[global flags] <command> [flags]")
+	fs.Usage = func() { fmt.Fprint(a.stderr, usage) }
+	if code, stop := a.parse(fs, "", args); stop {
+		return code
 	}
+	rest := fs.Args()
+	if len(rest) == 0 {
+		fmt.Fprint(a.stderr, usage)
+		return a.finish("", nil, nil, usageErr("missing command"), nil)
+	}
+	cmd, ok := commands[rest[0]]
+	if !ok {
+		return a.finish(rest[0], nil, nil, usageErr("unknown command %q", rest[0]), nil)
+	}
+	return cmd(a, ctx, rest[1:])
+}
+
+// cmdVersion prints the version (or {"version": ...} with --json).
+func cmdVersion(a *app, _ context.Context, args []string) int {
+	fs := a.flagSet("version", "version")
+	if code, stop := a.parse(fs, "version", args); stop {
+		return code
+	}
+	res := map[string]string{"version": Version}
+	return a.finish("version", res, nil, nil, func(w io.Writer) { fmt.Fprintln(w, "worktree-pg", Version) })
+}
+
+// cmdHelp prints the usage text on stdout.
+func cmdHelp(a *app, _ context.Context, _ []string) int {
+	fmt.Fprint(a.stdout, usage)
+	return exitOK
 }

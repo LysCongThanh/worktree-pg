@@ -1,0 +1,9 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": true,
+  "command": "version",
+  "result": {
+    "version": "dev"
+  },
+  "warnings": []
+}

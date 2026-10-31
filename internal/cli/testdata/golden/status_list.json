@@ -1,0 +1,47 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": true,
+  "command": "status",
+  "result": [
+    {
+      "worktree": {
+        "path": "/src/shop-feat",
+        "key": "aaaabbbbccccdddd",
+        "slug": "shop_feat",
+        "branch": "feat"
+      },
+      "status": "ready",
+      "cluster": {
+        "id": "ext-5432",
+        "kind": "external",
+        "host": "127.0.0.1",
+        "port": 5432,
+        "pg_major": 17
+      },
+      "database": "shop_wt_shop_feat_aaaabbbb",
+      "role": "shop_wt_shop_feat_01234567",
+      "ports": {
+        "ADMIN_PORT": 5602,
+        "PORT": 5601
+      },
+      "env_files": [
+        ".env"
+      ],
+      "template": {
+        "name": "shop_tpl_89abcdef",
+        "fingerprint": "",
+        "built": false,
+        "stale": true
+      },
+      "path_exists": true,
+      "health": {
+        "db_exists": true,
+        "role_exists": true,
+        "marker_ok": true,
+        "sessions": 2,
+        "template_stale": false
+      }
+    }
+  ],
+  "warnings": []
+}

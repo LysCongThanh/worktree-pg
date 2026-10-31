@@ -1,0 +1,26 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": false,
+  "command": "doctor",
+  "result": {
+    "checks": [
+      {
+        "name": "git",
+        "status": "ok",
+        "detail": "git version 2.55.0"
+      },
+      {
+        "name": "admin dsn",
+        "status": "fail",
+        "detail": "admin DSN not set",
+        "hint": "export WORKTREE_PG_ADMIN_DSN=..."
+      }
+    ]
+  },
+  "warnings": [],
+  "error": {
+    "code": "DOCTOR_FAILED",
+    "exit": 4,
+    "message": "1 doctor check(s) failed"
+  }
+}

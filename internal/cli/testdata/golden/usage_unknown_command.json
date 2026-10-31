@@ -1,0 +1,12 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": false,
+  "command": "bogus",
+  "warnings": [],
+  "error": {
+    "code": "USAGE",
+    "exit": 3,
+    "message": "unknown command \"bogus\"",
+    "hint": "run `worktree-pg help`"
+  }
+}

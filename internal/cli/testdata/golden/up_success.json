@@ -1,0 +1,52 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": true,
+  "command": "up",
+  "result": {
+    "worktree": {
+      "path": "/src/shop-feat",
+      "key": "aaaabbbbccccdddd",
+      "slug": "shop_feat",
+      "branch": "feat"
+    },
+    "cluster": {
+      "id": "ext-5432",
+      "kind": "external",
+      "host": "127.0.0.1",
+      "port": 5432,
+      "pg_major": 17
+    },
+    "database": "shop_wt_shop_feat_aaaabbbb",
+    "role": "shop_wt_shop_feat_01234567",
+    "template": {
+      "name": "shop_tpl_89abcdef",
+      "fingerprint": "89abcdef00",
+      "built": true,
+      "stale": false
+    },
+    "ports": {
+      "ADMIN_PORT": 5602,
+      "PORT": 5601
+    },
+    "env_files": [
+      {
+        "path": "/src/shop-feat/.env",
+        "changed": true,
+        "created": true,
+        "duplicate_keys": []
+      }
+    ],
+    "actions": [
+      "create_role",
+      "create_database",
+      "write_env"
+    ],
+    "duration_ms": 812
+  },
+  "warnings": [
+    {
+      "code": "PORT_BUSY",
+      "message": "PORT 5601 is in use"
+    }
+  ]
+}

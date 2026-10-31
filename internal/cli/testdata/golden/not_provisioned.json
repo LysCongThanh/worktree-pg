@@ -1,0 +1,12 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": false,
+  "command": "env",
+  "warnings": [],
+  "error": {
+    "code": "NOT_PROVISIONED",
+    "exit": 7,
+    "message": "/src/x is not provisioned",
+    "hint": "run `worktree-pg up`"
+  }
+}

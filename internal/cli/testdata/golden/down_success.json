@@ -1,0 +1,31 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": true,
+  "command": "down",
+  "result": {
+    "worktree": {
+      "path": "/src/shop-feat",
+      "key": "aaaabbbbccccdddd",
+      "slug": "shop_feat",
+      "branch": "feat"
+    },
+    "database": "shop_wt_shop_feat_aaaabbbb",
+    "role": "shop_wt_shop_feat_01234567",
+    "env_files": [
+      {
+        "path": "/src/shop-feat/.env",
+        "changed": true,
+        "created": true,
+        "duplicate_keys": []
+      }
+    ],
+    "actions": [
+      "drop_database",
+      "drop_role",
+      "strip_env"
+    ],
+    "orphans": [],
+    "duration_ms": 90
+  },
+  "warnings": []
+}

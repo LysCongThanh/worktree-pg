@@ -1,0 +1,19 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": true,
+  "command": "gc",
+  "result": {
+    "dry_run": true,
+    "items": [
+      {
+        "kind": "worktree",
+        "name": "shop_wt_shop_feat_aaaabbbb",
+        "key": "aaaabbbbccccdddd",
+        "path": "/src/gone",
+        "reason": "prunable: gitdir file points to non-existent location",
+        "action": "would_drop"
+      }
+    ]
+  },
+  "warnings": []
+}

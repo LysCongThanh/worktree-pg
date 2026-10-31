@@ -1,0 +1,18 @@
+{
+  "schema": "worktree-pg/v1",
+  "ok": false,
+  "command": "hook install git",
+  "result": {
+    "target": "git",
+    "action": "install",
+    "path": "/src/shop/.husky/post-checkout",
+    "changed": false,
+    "content": "# snippet\n"
+  },
+  "warnings": [],
+  "error": {
+    "code": "HOOKS_PATH_MANAGED",
+    "exit": 2,
+    "message": "core.hooksPath=.husky is inside the work tree"
+  }
+}
