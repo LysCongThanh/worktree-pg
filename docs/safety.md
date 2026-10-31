@@ -2,8 +2,8 @@
 
 worktree-pg drops databases and roles and edits files that you own, so it has to be
 conservative. The invariants below are pinned by tests named `TestInvariant_*` in the
-package that enforces them. Some of those tests arrive with the milestone that implements
-the behaviour.
+package that enforces them (the [README](../README.md#safety-invariants) links each one).
+Postgres tests run on 15-18 as a superuser and as a `NOSUPERUSER CREATEDB CREATEROLE` admin.
 
 | id | invariant |
 |---|---|
@@ -40,6 +40,10 @@ the behaviour.
   environment, not argv, but `docker inspect` still shows it. Docker group membership is
   root-equivalent on Linux, so this exposes nothing new to anyone who can already run
   `docker inspect`. The container is bound to loopback only (S12).
+- **Role passwords in server logs.** `CREATE ROLE` / `ALTER ROLE ... PASSWORD` send the
+  derived password in the SQL text. If the server sets `log_statement = 'ddl'` or `'all'`,
+  it lands in the server log. Keep statement logging off for DDL on dev clusters, or treat
+  those logs as secret.
 - **Untrusted extensions (spike D7).** These need a superuser admin. Admin-created extensions
   stay admin-owned after the ownership hand-over. `doctor` warns about this.
 - **Newlines in env values.** These are written double-quoted, which dotenv readers accept.
