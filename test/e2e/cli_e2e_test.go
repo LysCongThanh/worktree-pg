@@ -16,7 +16,7 @@ func TestE2E_UpEnvRunDown(t *testing.T) {
 		t.Skip("WTPG_TEST_ADMIN_DSN not set")
 	}
 	s := newSandbox(t, true)
-	root := s.repo(fixture())
+	root := s.repo(fixture(t))
 	wt := filepath.Join(s.dir, "shop-feat")
 	if r := s.run(root, "", "git", "worktree", "add", "-q", "-b", "feat", wt); r.code != 0 {
 		t.Fatal(r.stderr)
@@ -56,7 +56,7 @@ func TestE2E_GCAfterRmRf(t *testing.T) {
 		t.Skip("WTPG_TEST_ADMIN_DSN not set")
 	}
 	s := newSandbox(t, true)
-	root := s.repo(fixture())
+	root := s.repo(fixture(t))
 	wt := filepath.Join(s.dir, "shop-gone")
 	s.run(root, "", "git", "worktree", "add", "-q", "-b", "gone", wt)
 	r := s.run(wt, "", "", "up")

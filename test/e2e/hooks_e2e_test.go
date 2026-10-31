@@ -10,9 +10,16 @@ import (
 	"testing"
 )
 
-func fixture() map[string]string {
+// fixture returns the "shop" project files. With a test server configured, the
+// app name is unique per test and its leftovers (template, owner role) are
+// dropped on cleanup, so tests never share objects on the cluster.
+func fixture(t *testing.T) map[string]string {
+	app := "shop"
+	if os.Getenv("WTPG_TEST_ADMIN_DSN") != "" {
+		app = newApp(t)
+	}
 	return map[string]string{
-		".worktree-pg.toml": config, "db/schema.sql": schema, ".gitignore": ".env\n.claude/\n",
+		".worktree-pg.toml": strings.Replace(config, `name = "shop"`, fmt.Sprintf("name = %q", app), 1), "db/schema.sql": schema, ".gitignore": ".env\n.claude/\n",
 	}
 }
 
@@ -30,7 +37,7 @@ func TestE2E_VersionAndUsage(t *testing.T) {
 // succeeds; the hook explains the failure on stderr.
 func TestE2E_GitHookNeverBreaksCheckout(t *testing.T) {
 	s := newSandbox(t, false)
-	root := s.repo(fixture())
+	root := s.repo(fixture(t))
 	if r := s.run(root, "", "", "hook", "install", "git"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
@@ -48,7 +55,7 @@ func TestE2E_GitHookNeverBreaksCheckout(t *testing.T) {
 // empty and neither the worktree nor the branch survives.
 func TestE2E_ClaudeHookRollbackWithoutDSN(t *testing.T) {
 	s := newSandbox(t, false)
-	root := s.repo(fixture())
+	root := s.repo(fixture(t))
 	r := s.run(root, `{"hook_event_name":"WorktreeCreate","name":"agent-1"}`, "", "claude-hook", "create")
 	if r.code == 0 || r.stdout != "" {
 		t.Fatalf("%+v", r)
@@ -68,7 +75,7 @@ func TestE2E_ClaudeHookLifecycle(t *testing.T) {
 		t.Skip("WTPG_TEST_ADMIN_DSN not set")
 	}
 	s := newSandbox(t, true)
-	root := s.repo(fixture())
+	root := s.repo(fixture(t))
 	r := s.run(root, `{"session_id":"e2e","cwd":"`+root+`","hook_event_name":"WorktreeCreate","name":"agent-1"}`, "", "claude-hook", "create")
 	skipIfNotImplemented(t, r)
 	if r.code != 0 {

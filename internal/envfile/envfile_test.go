@@ -123,7 +123,9 @@ func TestWriteAndRemove(t *testing.T) {
 	}
 }
 
-func TestWriteRefusesUnsafeTargets(t *testing.T) {
+// TestInvariant_S7_EnvWriteRefusesUnsafeTargets: symlinks, paths outside the root
+// and corrupt blocks are refused; the symlink target is never modified.
+func TestInvariant_S7_EnvWriteRefusesUnsafeTargets(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	_ = os.WriteFile(filepath.Join(outside, "victim"), []byte("X=1\n"), 0o644)

@@ -34,9 +34,9 @@ func suffix() string {
 	return hex.EncodeToString(b)
 }
 
-// TestManagedLifecycle covers create, readiness over host TCP (D4), loopback-only
+// TestInvariant_S12_ManagedLifecycle covers create, readiness over host TCP (D4), loopback-only
 // publication (S12), restart of a stopped container and idempotent re-runs.
-func TestManagedLifecycle(t *testing.T) {
+func TestInvariant_S12_ManagedLifecycle(t *testing.T) {
 	needDocker(t)
 	ctx := context.Background()
 	m, err := NewManaged("postgres:16-alpine", "127.0.0.1", testPort, "pw-"+suffix())

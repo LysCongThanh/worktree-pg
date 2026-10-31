@@ -40,7 +40,9 @@ func TestParseRange(t *testing.T) {
 	}
 }
 
-func TestAllocateTable(t *testing.T) {
+// TestInvariant_S8_PortAllocation: taken, reserved, ephemeral and busy ports are
+// skipped; sticky ports are kept (busy = warning, never kill).
+func TestInvariant_S8_PortAllocation(t *testing.T) {
 	base := map[string][]Range{DefaultKey: {{5600, 5609}}}
 	cases := []struct {
 		name    string

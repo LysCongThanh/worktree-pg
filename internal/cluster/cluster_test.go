@@ -8,7 +8,8 @@ import (
 	"github.com/LysCongThanh/worktree-pg/internal/pg"
 )
 
-func TestLoopbackIP(t *testing.T) {
+// TestInvariant_S12_LoopbackOnly: a managed cluster may only publish on loopback.
+func TestInvariant_S12_LoopbackOnly(t *testing.T) {
 	ok := map[string]string{"localhost": "127.0.0.1", "127.0.0.1": "127.0.0.1", "::1": "::1", "127.0.0.2": "127.0.0.2"}
 	for in, want := range ok {
 		if got, err := LoopbackIP(in); err != nil || got != want {
