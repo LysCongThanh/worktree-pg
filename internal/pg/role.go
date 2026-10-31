@@ -46,20 +46,21 @@ func (a *Admin) MarkedRoles(ctx context.Context) ([]RoleInfo, error) {
 	})
 }
 
-// CreateRole creates a LOGIN role with the given password. The statement text
-// holds the password, so errors never echo it (pgconn errors carry no SQL).
-func (a *Admin) CreateRole(ctx context.Context, name, password string) error {
-	return a.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", Ident(name), Literal(password)))
+// CreateMarkedRole creates a LOGIN role with the given password and its marker
+// COMMENT in one implicit transaction (two statements in one simple-protocol
+// query). A crash can therefore never leave an unmarked role behind, which every
+// later run would refuse as foreign (S1) and gc could never collect (S4). A
+// parallel creator blocks on the name until this commits, so it sees the marker.
+// The statement text holds the password, so errors never echo it (pgconn errors
+// carry no SQL).
+func (a *Admin) CreateMarkedRole(ctx context.Context, name, password, marker string) error {
+	return a.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s; COMMENT ON ROLE %s IS %s",
+		Ident(name), Literal(password), Ident(name), Literal(marker)))
 }
 
 // SetPassword re-applies the (deterministic) password of an existing role.
 func (a *Admin) SetPassword(ctx context.Context, name, password string) error {
 	return a.Exec(ctx, fmt.Sprintf("ALTER ROLE %s PASSWORD %s", Ident(name), Literal(password)))
-}
-
-// CommentRole writes the marker as the role COMMENT.
-func (a *Admin) CommentRole(ctx context.Context, name, text string) error {
-	return a.Exec(ctx, fmt.Sprintf("COMMENT ON ROLE %s IS %s", Ident(name), Literal(text)))
 }
 
 // GrantToSelf makes the admin a member of role so it can create databases owned

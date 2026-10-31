@@ -17,23 +17,27 @@ const leasePoll = 250 * time.Millisecond
 // beginUp records the intent of an up under the registry lock (fast, S10): the
 // cluster record, the worktree entry with its lease, names, intent and sticky
 // ports. A held lease is retried until req.Wait elapses (else LEASE_HELD, exit 6).
-func (e *Engine) beginUp(ctx context.Context, ws *workspace, cl *cluster.Cluster, info pg.ServerInfo, req UpRequest, bound ports.PortSet) (*registry.Worktree, []Warning, error) {
+// crashed is the intent of an earlier up of a never-ready worktree that died
+// holding the lease (kill -9): its objects may be half-provisioned (post_clone_cmd
+// cut short), so the caller rolls them back before provisioning again (S4).
+func (e *Engine) beginUp(ctx context.Context, ws *workspace, cl *cluster.Cluster, info pg.ServerInfo, req UpRequest, bound ports.PortSet) (w *registry.Worktree, crashed *registry.Intent, warns []Warning, err error) {
 	deadline := time.Now().Add(req.Wait)
 	for {
-		w, warns, err := e.tryBeginUp(ctx, ws, cl, info, req, bound)
+		w, crashed, warns, err = e.tryBeginUp(ctx, ws, cl, info, req, bound)
 		if !errs.Is(err, errs.CodeLeaseHeld) || time.Now().After(deadline) {
-			return w, warns, err
+			return w, crashed, warns, err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return nil, nil, nil, ctx.Err()
 		case <-time.After(leasePoll):
 		}
 	}
 }
 
-func (e *Engine) tryBeginUp(ctx context.Context, ws *workspace, cl *cluster.Cluster, info pg.ServerInfo, req UpRequest, bound ports.PortSet) (*registry.Worktree, []Warning, error) {
+func (e *Engine) tryBeginUp(ctx context.Context, ws *workspace, cl *cluster.Cluster, info pg.ServerInfo, req UpRequest, bound ports.PortSet) (*registry.Worktree, *registry.Intent, []Warning, error) {
 	var out registry.Worktree
+	var crashed *registry.Intent
 	var warns []Warning
 	now := e.Opts.Now()
 	err := e.Store.Update(ctx, func(st *registry.State) error {
@@ -48,8 +52,13 @@ func (e *Engine) tryBeginUp(ctx context.Context, ws *workspace, cl *cluster.Clus
 			w = &registry.Worktree{Key: ws.key, CreatedAt: now, Origin: req.Origin, Status: registry.StatusProvisioning, Ports: map[string]int{}}
 			st.Worktrees[ws.key] = w
 		}
-		if _, err := w.Acquire("up", now); err != nil {
+		stale, err := w.Acquire("up", now)
+		if err != nil {
 			return err
+		}
+		if stale && w.Status != registry.StatusReady && w.Intent != nil {
+			cp := *w.Intent
+			crashed = &cp
 		}
 		w.Path, w.RepoCommonDir, w.App, w.Branch = ws.repo.Toplevel, ws.repo.CommonDir, ws.cfg.Name, ws.branch
 		w.Cluster, w.DB, w.Role = cl.ID, ws.db, ws.role
@@ -80,7 +89,7 @@ func (e *Engine) tryBeginUp(ctx context.Context, ws *workspace, cl *cluster.Clus
 		out = *w
 		return nil
 	})
-	return &out, warns, err
+	return &out, crashed, warns, err
 }
 
 // updateWorktree applies fn to the registered entry key (no-op when absent).

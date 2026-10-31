@@ -26,7 +26,8 @@ func itemFor(rep *GCReport, kind, pathOrName string) *GCItem {
 
 // TestInvariant_S13_GCDryRunDefaultNeverLocked: removed and prunable worktrees
 // are reported, dropped only with Apply; a locked worktree is never touched;
-// unrecorded marked clones are dropped only when their path is gone.
+// unrecorded marked clones are dropped only when their path is gone and they
+// were created on this host (another host's paths cannot be checked from here).
 func TestInvariant_S13_GCDryRunDefaultNeverLocked(t *testing.T) {
 	app := pgtest.App(t)
 	f := newRepo(t, app, adminDSNs(t, app)["nosuper"], "")
@@ -46,12 +47,13 @@ func TestInvariant_S13_GCDryRunDefaultNeverLocked(t *testing.T) {
 	}
 	super := pgtest.Connect(t, pgtest.SuperDSN(t))
 	tool := pgtest.Connect(t, f.env["WTPG_IT_ADMIN"]) // orphans were created by the tool's admin
-	orphan, live := app+"_wt_orphan_deadbeef", app+"_wt_live_cafebabe"
-	for db, path := range map[string]string{orphan: "/nonexistent/worktree", live: f.main} {
+	orphan, live, remote := app+"_wt_orphan_deadbeef", app+"_wt_live_cafebabe", app+"_wt_remote_feedface"
+	hosts := map[string]string{orphan: localHost(), live: localHost(), remote: "teammate-laptop"}
+	for db, path := range map[string]string{orphan: "/nonexistent/worktree", live: f.main, remote: "/nonexistent/worktree"} {
 		if err := tool.CreateDatabase(ctx, db, "template0", "", ""); err != nil {
 			t.Fatal(err)
 		}
-		m := names.Marker{Kind: names.KindClone, Key: names.Key(db), Path: path}
+		m := names.Marker{Kind: names.KindClone, Key: names.Key(db), Path: path, Host: hosts[db]}
 		if err := tool.CommentDatabase(ctx, db, m.String()); err != nil {
 			t.Fatal(err)
 		}
@@ -62,7 +64,7 @@ func TestInvariant_S13_GCDryRunDefaultNeverLocked(t *testing.T) {
 	}
 	for _, want := range []struct{ kind, key, action string }{
 		{"worktree", a, gcWouldDrop}, {"worktree", b, gcWouldDrop}, {"worktree", c, gcSkipped},
-		{"database", orphan, gcWouldDrop}, {"database", live, gcSkipped},
+		{"database", orphan, gcWouldDrop}, {"database", live, gcSkipped}, {"database", remote, gcSkipped},
 	} {
 		if it := itemFor(dry, want.kind, want.key); it == nil || it.Action != want.action {
 			t.Fatalf("dry run item %s %s: %+v (all %+v)", want.kind, want.key, it, dry.Items)
@@ -80,9 +82,9 @@ func TestInvariant_S13_GCDryRunDefaultNeverLocked(t *testing.T) {
 			t.Fatalf("%s survived gc --yes (%+v)", db, app2.Items)
 		}
 	}
-	for _, db := range []string{rc.Database, live} {
+	for _, db := range []string{rc.Database, live, remote} {
 		if d, _ := super.Database(ctx, db); d == nil {
-			t.Fatalf("%s must survive gc (locked / live path)", db)
+			t.Fatalf("%s must survive gc (locked / live path / other host)", db)
 		}
 	}
 	f.git(f.main, "worktree", "unlock", c)

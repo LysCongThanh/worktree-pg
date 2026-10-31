@@ -29,6 +29,10 @@ type Marker struct {
 	Key  string `json:"key,omitempty"`
 	Path string `json:"path,omitempty"`
 	FP   string `json:"fp,omitempty"`
+	// Host is the machine that created a worktree clone or role. The worktree path
+	// in the marker only means something on that machine, so gc never collects
+	// unrecorded objects created elsewhere (a teammate on a shared cluster).
+	Host string `json:"host,omitempty"`
 }
 
 // String renders the marker as `worktree-pg:v1 {"kind":...}`.

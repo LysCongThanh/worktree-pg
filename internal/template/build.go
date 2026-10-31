@@ -147,17 +147,14 @@ func (b *Builder) dropStaleBuild(ctx context.Context, build string) error {
 }
 
 // publish freezes the build DB and publishes it under its final name: no
-// connections, sessions terminated (build DB only, S2), IS_TEMPLATE, template
-// marker, then the atomic rename.
+// connections, sessions terminated (build DB only, S2), then IS_TEMPLATE, the
+// template marker and the rename together in one transaction (S3).
 func (b *Builder) publish(ctx context.Context, build, name string) error {
+	marker := names.Marker{Kind: names.KindTemplate, FP: b.FP}.String()
 	steps := []func() error{
 		func() error { return b.Admin.SetAllowConnections(ctx, build, false) },
 		func() error { return b.Admin.TerminateSessions(ctx, build) },
-		func() error { return b.Admin.SetTemplate(ctx, build, true) },
-		func() error {
-			return b.Admin.CommentDatabase(ctx, build, names.Marker{Kind: names.KindTemplate, FP: b.FP}.String())
-		},
-		func() error { return b.Admin.RenameDatabase(ctx, build, name) },
+		func() error { return b.Admin.PublishTemplate(ctx, build, name, marker) },
 	}
 	for _, s := range steps {
 		if err := s(); err != nil {

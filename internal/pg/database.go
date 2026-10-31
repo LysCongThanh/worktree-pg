@@ -121,6 +121,15 @@ func (a *Admin) RenameDatabase(ctx context.Context, from, to string) error {
 	return a.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s RENAME TO %s", Ident(from), Ident(to)))
 }
 
+// PublishTemplate sets IS_TEMPLATE, writes the template marker and renames the
+// frozen build database to its final name in one implicit transaction (three
+// statements, one simple-protocol query). A crash can never leave a build that
+// already carries the template marker, nor a published name without it (S3).
+func (a *Admin) PublishTemplate(ctx context.Context, build, name, marker string) error {
+	return a.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE true; COMMENT ON DATABASE %s IS %s; ALTER DATABASE %s RENAME TO %s",
+		Ident(build), Ident(build), Literal(marker), Ident(build), Ident(name)))
+}
+
 // SetTemplate toggles IS_TEMPLATE.
 func (a *Admin) SetTemplate(ctx context.Context, name string, on bool) error {
 	return a.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE %t", Ident(name), on))

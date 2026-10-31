@@ -80,13 +80,11 @@ func (d *Database) ensureRole(ctx context.Context, s Spec) (created bool, err er
 	}
 	switch {
 	case r == nil:
-		if err := d.Admin.CreateRole(ctx, s.Role, s.Password); err != nil {
+		m := names.Marker{Kind: names.KindRole, Key: s.Key, Path: s.Path, Host: s.Marker.Host}
+		if err := d.Admin.CreateMarkedRole(ctx, s.Role, s.Password, m.String()); err != nil {
 			return false, pg.Wrap(err, "create role %s", s.Role)
 		}
 		created = true
-		if err := d.Admin.CommentRole(ctx, s.Role, names.Marker{Kind: names.KindRole, Key: s.Key, Path: s.Path}.String()); err != nil {
-			return true, pg.Wrap(err, "mark role %s", s.Role)
-		}
 	case !names.Owns(r.Comment, names.KindRole, s.Key):
 		return false, foreign("role", s.Role)
 	default:
@@ -120,7 +118,7 @@ func (d *Database) ensureDB(ctx context.Context, s Spec, perWT bool) (created bo
 	if err != nil {
 		return false, pg.Wrap(err, "clone %s from %s", s.DB, s.Template)
 	}
-	m := names.Marker{Kind: names.KindClone, Key: s.Key, Path: s.Path, FP: s.Marker.FP}
+	m := names.Marker{Kind: names.KindClone, Key: s.Key, Path: s.Path, FP: s.Marker.FP, Host: s.Marker.Host}
 	return true, pg.Wrap(d.Admin.CommentDatabase(ctx, s.DB, m.String()), "mark database %s", s.DB)
 }
 

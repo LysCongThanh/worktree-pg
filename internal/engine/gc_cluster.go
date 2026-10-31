@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -57,7 +58,7 @@ func (e *Engine) gcUnrecorded(ctx context.Context, admin *pg.Admin, prefix strin
 		if !ok || m.Kind != names.KindClone || known[m.Key] || !strings.HasPrefix(d.Name, prefix) {
 			continue
 		}
-		e.gcOrphan(rep, GCItem{Kind: "database", Name: d.Name, Key: m.Key, Path: m.Path}, apply,
+		e.gcOrphan(rep, GCItem{Kind: "database", Name: d.Name, Key: m.Key, Path: m.Path}, m.Host, apply,
 			func() error { return admin.DropDatabase(ctx, d.Name, true) })
 	}
 	roles, err := admin.MarkedRoles(ctx)
@@ -69,7 +70,7 @@ func (e *Engine) gcUnrecorded(ctx context.Context, admin *pg.Admin, prefix strin
 		if !ok || m.Kind != names.KindRole || known[m.Key] || !strings.HasPrefix(r.Name, prefix) {
 			continue
 		}
-		e.gcOrphan(rep, GCItem{Kind: "role", Name: r.Name, Key: m.Key, Path: m.Path}, apply,
+		e.gcOrphan(rep, GCItem{Kind: "role", Name: r.Name, Key: m.Key, Path: m.Path}, m.Host, apply,
 			func() error { return admin.DropRole(ctx, r.Name) })
 	}
 	return nil
@@ -97,14 +98,25 @@ func (e *Engine) gcTemplates(ctx context.Context, ws *workspace, admin *pg.Admin
 }
 
 // gcOrphan reports (and with apply drops) an unrecorded marked object, but only
-// when its marker path is no longer a live directory.
-func (e *Engine) gcOrphan(rep *GCReport, item GCItem, apply bool, drop func() error) {
-	if item.Path != "" && exists(item.Path) {
+// when it was created on this machine and its marker path is no longer a live
+// directory. An object from another host (shared cluster) or without a host is
+// never collected: its path cannot be checked from here.
+func (e *Engine) gcOrphan(rep *GCReport, item GCItem, host string, apply bool, drop func() error) {
+	switch {
+	case host != localHost():
+		item.Reason, item.Action = "unrecorded, created on another host ("+host+"); drop it there or by hand", gcSkipped
+	case item.Path != "" && exists(item.Path):
 		item.Reason, item.Action = "unrecorded but its worktree path still exists", gcSkipped
-	} else {
+	default:
 		item.Action, item.Reason = gcApply(apply, "unrecorded object of a removed worktree", drop)
 	}
 	rep.Items = append(rep.Items, item)
+}
+
+// localHost is this machine's hostname as recorded in clone and role markers.
+func localHost() string {
+	h, _ := os.Hostname()
+	return h
 }
 
 // forgetTemplates removes dropped templates from the cluster record.

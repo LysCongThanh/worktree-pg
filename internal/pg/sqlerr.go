@@ -15,6 +15,7 @@ const (
 	CodeLockNotAvailable      = "55P03" // lock_timeout hit
 	CodeDuplicateDatabase     = "42P04"
 	CodeDuplicateObject       = "42710" // role already exists
+	CodeUniqueViolation       = "23505" // catalog unique index: a concurrent CREATE ROLE committed first
 	CodeDependentObjects      = "2BP01" // role cannot be dropped: objects depend on it
 	CodeInvalidCatalogName    = "3D000" // database (or template) does not exist
 	CodeInsufficientPrivilege = "42501"

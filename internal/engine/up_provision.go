@@ -102,7 +102,7 @@ func (e *Engine) cloneSpec(ws *workspace, cl *cluster.Cluster, tpl, fp, password
 	return backend.Spec{Key: ws.key, Path: ws.repo.Toplevel, App: ws.cfg.Name, Slug: ws.slug, DB: ws.db, Role: ws.role,
 		OwnerRole: ws.owner, Template: tpl, RolesMode: ws.cfg.Database.Roles, Strategy: ws.cfg.Database.Strategy,
 		RevokePublicConnect: ws.cfg.Database.RevokePublicConnect, ConnectRoles: connect, Password: password,
-		Marker: names.Marker{Kind: names.KindClone, Key: ws.key, Path: ws.repo.Toplevel, FP: fp}}
+		Marker: names.Marker{Kind: names.KindClone, Key: ws.key, Path: ws.repo.Toplevel, FP: fp, Host: localHost()}}
 }
 
 // ensureClone runs the backend, re-ensuring the template once when it was

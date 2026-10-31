@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"github.com/LysCongThanh/worktree-pg/internal/errs"
@@ -69,7 +70,7 @@ func (e *Engine) gcEntry(ctx context.Context, w *registry.Worktree, list []gitx.
 		if !exists(w.Path) {
 			rep.Warnings = append(rep.Warnings, Warning{Code: "WORKTREE_MISSING", Message: w.Path + " is listed by git but missing; run `git worktree prune`"})
 		}
-		if w.Status == registry.StatusProvisioning && w.Lease != nil && w.Lease.Stale(e.Opts.Now()) {
+		if w.Status == registry.StatusProvisioning && w.Lease.Stale(e.Opts.Now()) { // nil-safe: no lease = abandoned
 			item.Reason = "stale provisioning lease"
 			item.Action, item.Reason = gcApply(apply, item.Reason, func() error { return e.rollbackStale(ctx, w) })
 			rep.Items = append(rep.Items, item)
@@ -101,30 +102,53 @@ func gcApply(apply bool, reason string, fn func() error) (action, why string) {
 
 // rollbackStale drops the objects recorded in a crashed up's intent (S4) and
 // marks the entry failed. The worktree never became ready, so nothing is lost.
+// gc first takes over the stale lease under the registry lock: the entry may have
+// been re-claimed by a live `up` since gc's snapshot, and that run's objects must
+// not be dropped from under it.
 func (e *Engine) rollbackStale(ctx context.Context, w *registry.Worktree) error {
-	if w.Intent != nil {
-		cfg := e.configFor(w)
-		var c registry.Cluster
-		_ = e.Store.View(func(st *registry.State) error {
-			if rc := st.Clusters[w.Cluster]; rc != nil {
-				c = *rc
-			}
-			return nil
-		})
-		cl, admin, err := e.connectRecord(ctx, cfg, &c, true)
-		if err != nil {
+	var intent *registry.Intent
+	var c registry.Cluster
+	err := e.Store.Update(ctx, func(st *registry.State) error {
+		cur := st.Worktrees[w.Key]
+		if cur == nil || cur.Status != registry.StatusProvisioning || !cur.Lease.Stale(e.Opts.Now()) { // nil lease counts as stale
+			return errs.New(errs.Busy, errs.CodeLeaseHeld, "%s is no longer a crashed provisioning run", w.Path)
+		}
+		if _, err := cur.Acquire("gc", e.Opts.Now()); err != nil {
 			return err
 		}
-		defer admin.Close(context.WithoutCancel(ctx))
-		v := &registry.Worktree{Key: w.Key, DB: w.Intent.DB, Role: w.Intent.Role}
-		if err := e.backendFor(cl, admin, &workspace{cfg: cfg}).Destroy(ctx, v); err != nil {
-			return err
+		if cur.Intent != nil {
+			cp := *cur.Intent
+			intent = &cp
 		}
+		if rc := st.Clusters[cur.Cluster]; rc != nil {
+			c = *rc
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return e.updateWorktree(ctx, w.Key, func(_ *registry.State, cur *registry.Worktree) {
-		if cur.Lease != nil && cur.Lease.Stale(e.Opts.Now()) {
-			cur.Lease, cur.Intent, cur.Status = nil, nil, registry.StatusFailed
+	if intent != nil {
+		err = e.dropIntent(ctx, w, &c, intent)
+	}
+	return errors.Join(err, e.updateWorktree(context.WithoutCancel(ctx), w.Key, func(_ *registry.State, cur *registry.Worktree) {
+		if err == nil {
+			cur.Intent, cur.Status = nil, registry.StatusFailed
 			cur.LastError = "rolled back by gc after a crashed up"
 		}
-	})
+		cur.Release()
+	}))
+}
+
+// dropIntent destroys the database and role named by a crashed run's intent
+// (markers must still match, S1).
+func (e *Engine) dropIntent(ctx context.Context, w *registry.Worktree, c *registry.Cluster, in *registry.Intent) error {
+	cfg := e.configFor(w)
+	cl, admin, err := e.connectRecord(ctx, cfg, c, true)
+	if err != nil {
+		return err
+	}
+	defer admin.Close(context.WithoutCancel(ctx))
+	v := &registry.Worktree{Key: w.Key, DB: in.DB, Role: in.Role}
+	return e.backendFor(cl, admin, &workspace{cfg: cfg}).Destroy(ctx, v)
 }

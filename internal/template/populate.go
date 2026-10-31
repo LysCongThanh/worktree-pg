@@ -21,15 +21,14 @@ func EnsureOwner(ctx context.Context, a *pg.Admin, owner, password string) (crea
 		return false, err
 	}
 	if r == nil {
-		err = a.CreateRole(ctx, owner, password)
-		if pg.IsState(err, pg.CodeDuplicateObject) { // lost a race with a parallel up
+		err = a.CreateMarkedRole(ctx, owner, password, names.Marker{Kind: names.KindOwner}.String())
+		// lost a race with a parallel build of another fingerprint: 42710 if it had
+		// committed before we looked, 23505 if we blocked on its in-flight insert
+		if pg.IsState(err, pg.CodeDuplicateObject) || pg.IsState(err, pg.CodeUniqueViolation) {
 			return EnsureOwner(ctx, a, owner, password)
 		}
 		if err != nil {
 			return false, pg.Wrap(err, "create owner role %s", owner)
-		}
-		if err := a.CommentRole(ctx, owner, names.Marker{Kind: names.KindOwner}.String()); err != nil {
-			return true, pg.Wrap(err, "mark owner role %s", owner)
 		}
 		created = true
 	} else if m, ok := names.ParseMarker(r.Comment); !ok || m.Kind != names.KindOwner {

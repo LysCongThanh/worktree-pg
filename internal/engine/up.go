@@ -44,12 +44,19 @@ func (e *Engine) Up(ctx context.Context, req UpRequest) (*UpResult, error) {
 		return e.dryRun(ws, res)
 	}
 	bound, _ := ports.DockerBound(ctx) // best effort, outside the registry lock (S10)
-	w, warns, err := e.beginUp(ctx, ws, cl, admin.Info, req, bound)
+	w, crashed, warns, err := e.beginUp(ctx, ws, cl, admin.Info, req, bound)
 	if err != nil {
 		return nil, err
 	}
 	res.Ports, res.Warnings = w.Ports, warns
 	be := e.backendFor(cl, admin, ws)
+	if crashed != nil { // a killed up left this never-ready worktree half-provisioned
+		if err := be.Destroy(ctx, &registry.Worktree{Key: ws.key, DB: crashed.DB, Role: crashed.Role}); err != nil {
+			e.failUp(ctx, ws, nil, nil, err)
+			return nil, err
+		}
+		res.Actions = append(res.Actions, "rollback_crashed_up")
+	}
 	var ep backend.Endpoint
 	if err := e.provision(ctx, ws, cl, admin, be, w, req, res, &ep); err != nil {
 		e.failUp(ctx, ws, func(v *registry.Worktree) error { return be.Destroy(context.WithoutCancel(ctx), v) }, ep.Actions, err)
