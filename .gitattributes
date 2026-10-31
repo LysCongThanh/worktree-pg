@@ -1,0 +1,3 @@
+# golden fixtures must keep their exact bytes (CRLF cases, NUL-separated git output)
+internal/envfile/testdata/* -text
+internal/gitx/testdata/* -text
