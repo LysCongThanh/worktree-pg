@@ -7,7 +7,7 @@
 #     with `worktree-pg hook install git` already run and no worktrees yet
 #   - worktree-pg on PATH; a short prompt (PS1='$ ')
 #
-# Story (about 40 s):
+# Story (about 30 s):
 #   1. The config is tiny.                                 (cat .worktree-pg.toml)
 #   2. Three agents get three worktrees at once.           (3x git worktree add in parallel)
 #      -> first one builds the template, all three clone it
@@ -22,37 +22,37 @@ Set FontSize 18
 Set Width 1200
 Set Height 640
 Set Padding 20
-Set TypingSpeed 45ms
+Set TypingSpeed 15ms
 Set Theme "Catppuccin Mocha"
 
 Hide
-Type "cd ~/demo/shop && clear" Enter
+Type "export PS1='$ ' && cd ~/demo/shop && clear" Enter
 Show
 
 # 1. Config
 Type "cat .worktree-pg.toml" Sleep 400ms Enter
-Sleep 3s
+Sleep 2500ms
 
 # 2. Three agents, three worktrees, in parallel
 Type "for a in 1 2 3; do git worktree add -q ../agent-$a -b agent-$a & done; wait" Sleep 400ms Enter
-Sleep 8s
+Sleep 7s
 
 # 3. Separate DSNs and sticky ports
 Type `grep -h -E 'DATABASE_URL|PORT' ../agent-*/.env | sed -E 's#://([^:]+):[^@]+@#://\1:***@#'` Sleep 400ms Enter
-Sleep 4s
+Sleep 3s
 
 # 4. Isolation: write in agent-1, read in agent-2
-Type `(cd ../agent-1 && worktree-pg run -- sh -c 'psql -qc "insert into items(name) values ($$only-in-1$$)" "$DATABASE_URL"')` Enter
-Sleep 1500ms
-Type `(cd ../agent-2 && worktree-pg run -- sh -c 'psql -Atc "select count(*) from items where name = $$only-in-1$$" "$DATABASE_URL"')` Enter
-Sleep 3s
+Type `(cd ../agent-1 && worktree-pg run -- sh -c "psql -qc \"insert into items(name) values ('only-in-1')\" \"\$DATABASE_URL\"")` Enter
+Sleep 1s
+Type `(cd ../agent-2 && worktree-pg run -- sh -c "psql -Atc \"select count(*) from items where name = 'only-in-1'\" \"\$DATABASE_URL\"")` Enter
+Sleep 2500ms
 
 # 5. Warm template: a fourth worktree in about a second and a half
 Type "time git worktree add -q ../agent-4 -b agent-4" Sleep 400ms Enter
-Sleep 5s
+Sleep 4s
 
 # 6. Overview and teardown
 Type "worktree-pg status --all" Sleep 400ms Enter
-Sleep 4s
-Type "(cd ../agent-4 && worktree-pg down)" Sleep 400ms Enter
 Sleep 3s
+Type "(cd ../agent-4 && worktree-pg down)" Sleep 400ms Enter
+Sleep 2s

@@ -2,6 +2,8 @@
 
 **A migrated Postgres database per git worktree, in about 1.6 seconds. Built for parallel AI agents.**
 
+![Three worktrees get three isolated, migrated databases in parallel; a fourth clones from the warm template](docs/demo.gif)
+
 `worktree-pg` gives every git worktree its own PostgreSQL database, cloned from a template
 that was migrated once. Each worktree also gets its own login role, sticky dev ports and a
 managed block in its `.env` file. Run five coding agents in five worktrees and none of them
